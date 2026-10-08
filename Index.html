@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>MYTIME AV | ระบบทะเบียนและตรวจเช็ก PM ครุภัณฑ์</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <!-- Html5-QRCode Scanner -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Prompt', 'sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <style>
+    #reader {
+      border: none !important;
+    }
+    #reader video {
+      border-radius: 1rem;
+      object-fit: cover;
+    }
+  </style>
+</head>
+<body class="bg-zinc-100 text-zinc-900 min-h-screen font-sans antialiased pb-20 selection:bg-red-600 selection:text-white">
+
+  <!-- แถบสีแดงด้านบนสุด -->
+  <div class="h-1.5 bg-red-600 w-full"></div>
+
+  <!-- Header -->
+  <header class="bg-white border-b border-zinc-200 sticky top-0 z-40 shadow-sm">
+    <div class="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <span class="font-black text-xl tracking-tighter uppercase text-zinc-900">MYTIME</span>
+        <span class="text-[10px] bg-red-600 text-white font-bold px-1.5 py-0.5 rounded font-mono uppercase tracking-wider">AV ASSET</span>
+      </div>
+      
+      <div class="flex items-center gap-2">
+        <div id="statusBadge" class="text-xs border border-zinc-200 rounded-full px-2.5 py-1 bg-zinc-50 flex items-center gap-1.5 text-zinc-600">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>ระบบออนไลน์</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Overlay Loader -->
+  <div id="loadingOverlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 hidden flex flex-col items-center justify-center">
+    <div class="w-9 h-9 border-4 border-red-600 border-t-transparent rounded-full animate-spin mb-3"></div>
+    <div id="loadingText" class="text-xs font-semibold text-zinc-700 font-mono">กำลังประมวลผล...</div>
+  </div>
+
+  <main class="max-w-3xl mx-auto px-4 mt-6 space-y-4">
+    
+    <!-- กล่องหลักสำหรับสแกน / ค้นหาครุภัณฑ์ -->
+    <div class="bg-white border border-zinc-200 border-t-4 border-t-red-600 rounded-2xl p-6 shadow-sm space-y-4">
+      <div class="text-center space-y-1">
+        <h1 class="text-2xl font-bold text-zinc-900">ค้นหาและจัดการครุภัณฑ์</h1>
+        <p class="text-xs text-zinc-500">สแกน Barcode/QR Code หรือพิมพ์รหัสพัสดุแล้วกด Enter เพื่อดึงข้อมูล</p>
+      </div>
+
+      <!-- พื้นที่เปิดกล้องสแกน -->
+      <div id="scannerArea" class="border-2 border-dashed border-zinc-300 hover:border-red-500 bg-zinc-50 rounded-2xl p-4 flex flex-col items-center justify-center transition duration-200">
+        <div id="reader-container" class="w-full max-w-sm rounded-2xl overflow-hidden hidden mb-3">
+          <div id="reader"></div>
+        </div>
+
+        <button id="toggleCamBtn" type="button" onclick="toggleCamera()" 
+                class="inline-flex items-center gap-2 bg-zinc-900 hover:bg-black text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition shadow-sm active:scale-95">
+          <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+          </svg>
+          <span id="btnCameraText">เปิดกล้องสแกน Barcode/QR</span>
+        </button>
+      </div>
+
+      <!-- ช่องพิมพ์ค้นหาด้วยรหัส (ครอบด้วย Form ให้กด Enter ได้ทันที) -->
+      <form id="searchForm" onsubmit="handleSearchSubmit(event)" class="flex gap-2">
+        <input type="text" id="manualAssetId" placeholder="พิมพ์รหัสพัสดุ (เช่น AV-0001) แล้วกด Enter" 
+               class="flex-1 bg-zinc-50 border border-zinc-200 text-zinc-900 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition">
+        <button type="submit" 
+                class="bg-zinc-900 hover:bg-black text-white font-semibold text-sm px-5 py-3 rounded-xl transition shadow-sm active:scale-95 flex items-center justify-center">
+          <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        </button>
+      </form>
+    </div>
+
+    <!-- ผลลัพธ์: การ์ดแสดงข้อมูลครุภัณฑ์ -->
+    <div id="assetDetailCard" class="hidden bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm space-y-4">
+      <div class="flex justify-between items-start border-b border-zinc-100 pb-3">
+        <div>
+          <span id="displayAssetId" class="text-xs font-mono font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded">ASSET-ID</span>
+          <h2 id="displayAssetName" class="text-lg font-bold text-zinc-900 mt-1">ชื่ออุปกรณ์</h2>
+        </div>
+        <span id="displayStatus" class="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-100 text-emerald-700">ใช้งานปกติ</span>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3 text-xs">
+        <div class="bg-zinc-50 p-2.5 rounded-xl border border-zinc-100">
+          <span class="text-zinc-400 block mb-0.5">วันที่ซื้อ / จัดหา</span>
+          <strong id="displayPurchaseDate" class="text-zinc-800 font-medium">-</strong>
+        </div>
+        <div class="bg-zinc-50 p-2.5 rounded-xl border border-zinc-100">
+          <span class="text-zinc-400 block mb-0.5">จำนวนรายการ</span>
+          <strong id="displayQuantity" class="text-zinc-800 font-medium">-</strong>
+        </div>
+        <div class="col-span-2 bg-zinc-50 p-2.5 rounded-xl border border-zinc-100">
+          <span class="text-zinc-400 block mb-0.5">ผู้ตรวจเช็คล่าสุด</span>
+          <strong id="displayInspector" class="text-zinc-800 font-medium">-</strong>
+        </div>
+      </div>
+
+      <!-- Alert เมื่ออุปกรณ์ถูกยืม -->
+      <div id="borrowInfoAlert" class="hidden bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-xl text-xs space-y-0.5">
+        <div class="font-semibold flex items-center gap-1.5 text-amber-800">
+          <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+          ขณะนี้ถูกยืมโดย: <span id="infoBorrowerName">-</span> (<span id="infoBorrowDept">-</span>)
+        </div>
+        <div class="text-amber-700 text-[11px]">กำหนดส่งคืน: <span id="infoExpectedReturn">-</span></div>
+      </div>
+
+      <!-- ปุ่ม Action ทั้ง 3 ปุ่ม -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
+        <button type="button" onclick="openPMModal()" 
+                class="w-full py-2.5 bg-zinc-900 hover:bg-black text-white text-xs font-semibold rounded-xl transition shadow-sm flex items-center justify-center gap-1.5 active:scale-95">
+          <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          <span>1. ตรวจเช็ก PM</span>
+        </button>
+
+        <button type="button" id="btnBorrowReturn" onclick="openBorrowReturnModal()" 
+                class="w-full py-2.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-900 text-xs font-semibold rounded-xl transition shadow-sm flex items-center justify-center gap-1.5 active:scale-95">
+          <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+          <span id="textBorrowReturnBtn">2. เบิก-ยืม-คืน</span>
+        </button>
+
+        <button type="button" onclick="openRepairModal()" 
+                class="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-xl transition shadow-sm flex items-center justify-center gap-1.5 active:scale-95">
+          <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+          <span>3. แจ้งซ่อม</span>
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ================= MODALS ================= -->
+
+  <!-- 1. Modal: บันทึก PM -->
+  <div id="modalPM" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-zinc-100 pb-3">
+        <h3 class="text-sm font-bold text-zinc-900 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          บันทึกตรวจเช็กบำรุงรักษา (PM)
+        </h3>
+        <button type="button" onclick="closeModal('modalPM')" class="text-zinc-400 hover:text-black text-sm">✕</button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block text-zinc-700 font-semibold mb-1">ชื่อเจ้าหน้าที่ผู้ตรวจเช็ก <span class="text-red-500">*</span></label>
+          <input type="text" id="pmInspector" placeholder="ระบุชื่อ-นามสกุล" class="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-red-500">
+        </div>
+
+        <div>
+          <label class="block text-zinc-700 font-semibold mb-1">1. สภาพกายภาพภายนอก</label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex items-center justify-center gap-1.5 border border-zinc-200 rounded-xl p-2 cursor-pointer bg-zinc-50 hover:bg-zinc-100 has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50 has-[:checked]:text-emerald-700 font-medium">
+              <input type="radio" name="pmPhysical" value="Pass" checked class="hidden"> ปกติ (Pass)
+            </label>
+            <label class="flex items-center justify-center gap-1.5 border border-zinc-200 rounded-xl p-2 cursor-pointer bg-zinc-50 hover:bg-zinc-100 has-[:checked]:border-red-500 has-[:checked]:bg-red-50 has-[:checked]:text-red-700 font-medium">
+              <input type="radio" name="pmPhysical" value="Fail" class="hidden"> ชำรุด (Fail)
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-zinc-700 font-semibold mb-1">2. การทำงานของระบบ / ฟังก์ชัน</label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex items-center justify-center gap-1.5 border border-zinc-200 rounded-xl p-2 cursor-pointer bg-zinc-50 hover:bg-zinc-100 has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50 has-[:checked]:text-emerald-700 font-medium">
+              <input type="radio" name="pmFunction" value="Pass" checked class="hidden"> พร้อมใช้ (Pass)
+            </label>
+            <label class="flex items-center justify-center gap-1.5 border border-zinc-200 rounded-xl p-2 cursor-pointer bg-zinc-50 hover:bg-zinc-100 has-[:checked]:border-red-500 has-[:checked]:bg-red-50 has-[:checked]:text-red-700 font-medium">
+              <input type="radio" name="pmFunction" value="Fail" class="hidden"> ไม่พร้อมใช้ (Fail)
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-zinc-700 font-semibold mb-1">หมายเหตุเพิ่มเติม</label>
+          <textarea id="pmRemark" rows="2" placeholder="เช่น ทำความสะอาดหัวแจ็ค เลนส์ใส พร้อมใช้งาน" class="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-red-500"></textarea>
+        </div>
+      </div>
+
+      <button type="button" onclick="submitPMRecord()" class="w-full bg-zinc-900 hover:bg-black text-white text-xs font-semibold py-3 rounded-xl transition shadow-sm active:scale-[0.99]">
+        บันทึกผลการตรวจเช็ก
+      </button>
+    </div>
+  </div>
+
+  <!-- 2. Modal: ยืมอุปกรณ์ -->
+  <div id="modalBorrow" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-zinc-100 pb-3">
+        <h3 class="text-sm font-bold text-zinc-900 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+          บันทึกการเบิก-ยืมอุปกรณ์
+        </h3>
+        <button type="button" onclick="closeModal('modalBorrow')" class="text-zinc-400 hover:text-black text-sm">✕</button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block text-zinc-700 font-semibold mb-1">ชื่อผู้เบิกยืม <span class="text-red-500">*</span></label>
+          <input type="text" id="borrowerName" placeholder="เช่น นายสมชาย" class="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-red-500">
+        </div>
+        <div>
+          <label class="block text-zinc-700 font-semibold mb-1">หน่วยงาน / ภาควิชา <span class="text-red-500">*</span></label>
+          <input type="text" id="borrowerDept" placeholder="เช่น ศูนย์แพทยศาสตร์ศึกษา" class="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-red-500">
+        </div>
+        <div>
+          <label class="block text-zinc-700 font-semibold mb-1">สถานที่นำไปใช้งาน</label>
+          <input type="text" id="borrowPurpose" placeholder="เช่น ถ่าย VTR ห้องประชุมใหญ่" class="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-red-500">
+        </div>
+        <div>
+          <label class="block text-zinc-700 font-semibold mb-1">กำหนดส่งคืน <span class="text-red-500">*</span></label>
+          <input type="date" id="expectedReturnDate" class="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-red-500">
+        </div>
+      </div>
+
+      <button type="button" onclick="submitBorrow()" class="w-full bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold py-3 rounded-xl transition shadow-sm active:scale-[0.99]">
+        ยืนยันการเบิกยืม
+      </button>
+    </div>
+  </div>
+
+  <!-- 3. Modal: รับคืนอุปกรณ์ -->
+  <div id="modalReturn" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-zinc-100 pb-3">
+        <h3 class="text-sm font-bold text-zinc-900 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          บันทึกรับคืนอุปกรณ์
+        </h3>
+        <button type="button" onclick="closeModal('modalReturn')" class="text-zinc-400 hover:text-black text-sm">✕</button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div class="bg-zinc-50 p-3 rounded-xl border border-zinc-200">
+          <span class="text-zinc-400 block text-[11px]">รับคืนพัสดุ</span>
+          <strong id="returnAssetLabel" class="text-zinc-900">-</strong>
+        </div>
+
+        <div>
+          <label class="block text-zinc-700 font-semibold mb-1">เจ้าหน้าที่ผู้ตรวจรับมอบคืน <span class="text-red-500">*</span></label>
+          <input type="text" id="staffReceiver" placeholder="ระบุชื่อเจ้าหน้าที่ผู้รับคืน" class="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-red-500">
+        </div>
+      </div>
+
+      <button type="button" onclick="submitReturn()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-3 rounded-xl transition shadow-sm active:scale-[0.99]">
+        ยืนยันการรับมอบคืน
+      </button>
+    </div>
+  </div>
+
+  <!-- 4. Modal: แจ้งซ่อม -->
+  <div id="modalRepair" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b border-zinc-100 pb-3">
+        <h3 class="text-sm font-bold text-zinc-900 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-red-600"></span>
+          เปิดใบแจ้งซ่อมอุปกรณ์ชำรุด
+        </h3>
+        <button type="button" onclick="closeModal('modalRepair')" class="text-zinc-400 hover:text-black text-sm">✕</button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block text-zinc-700 font-semibold mb-1">อาการเสีย / รายละเอียดปัญหา <span class="text-red-500">*</span></label>
+          <textarea id="repairDescription" rows="4" placeholder="ระบุอาการชำรุดอย่างละเอียด เช่น ไฟไม่เข้า, สัญญาณภาพกระตุก, หัวแจ็คหลวม" class="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-red-500"></textarea>
+        </div>
+      </div>
+
+      <button type="button" onclick="submitRepair()" class="w-full bg-red-600 hover:bg-red-700 text-white text-xs font-semibold py-3 rounded-xl transition shadow-sm active:scale-[0.99]">
+        ยืนยันส่งซ่อมอุปกรณ์
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // Web App URL จาก Apps Script Deployment
+    const API_URL = "https://script.google.com/macros/s/AKfycbzJri3xVZ-BSP2QgIek36OzWp9MMige1yII4NIdvf1ebcEeEcP6_rFCHnsBA4_HWu-K/exec";
+
+    let currentAsset = null;
+    let html5QrCode = null;
+    let isCameraRunning = false;
+
+    document.addEventListener("DOMContentLoaded", () => {
+      document.getElementById('expectedReturnDate').value = new Date().toISOString().split('T')[0];
+    });
+
+    // ฟังก์ชันดักจับ Form Submit เมื่อกด Enter
+    function handleSearchSubmit(event) {
+      if (event) event.preventDefault();
+      lookupAssetManual();
+    }
+
+    // ----------------------------------------------------
+    // API Bridge (รองรับทั้ง Google Apps Script และ GitHub)
+    // ----------------------------------------------------
+    async function callBackend(action, payload) {
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        return new Promise((resolve, reject) => {
+          if (action === "getAssetDetail") {
+            google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getAssetDetail(payload.assetId);
+          } else if (action === "savePMRecord") {
+            google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).savePMRecord(payload.formData);
+          } else if (action === "processBorrowReturn") {
+            google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).processBorrowReturn(payload.formData);
+          } else if (action === "reportIncident") {
+            google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).reportIncident(payload.formData);
+          }
+        });
+      }
+
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: action, ...payload })
+      });
+      return await res.json();
+    }
+
+    // ----------------------------------------------------
+    // กล้องสแกน Barcode / QR Code
+    // ----------------------------------------------------
+    function toggleCamera() {
+      const container = document.getElementById('reader-container');
+      const btnText = document.getElementById('btnCameraText');
+
+      if (!isCameraRunning) {
+        container.classList.remove('hidden');
+        btnText.textContent = "ปิดกล้องสแกน";
+        startScanner();
+      } else {
+        stopScanner();
+      }
+    }
+
+    function startScanner() {
+      html5QrCode = new Html5Qrcode("reader");
+      const config = { fps: 10, qrbox: { width: 220, height: 220 } };
+
+      html5QrCode.start(
+        { facingMode: "environment" },
+        config,
+        (decodedText) => {
+          stopScanner();
+          document.getElementById('manualAssetId').value = decodedText;
+          fetchAssetData(decodedText);
+        },
+        (errorMessage) => {}
+      ).then(() => {
+        isCameraRunning = true;
+      }).catch(err => {
+        Swal.fire("ไม่สามารถเปิดกล้องได้", "กรุณาเปิดสิทธิ์เข้าถึงกล้องบนอุปกรณ์ของท่าน", "error");
+        document.getElementById('reader-container').classList.add('hidden');
+        document.getElementById('btnCameraText').textContent = "เปิดกล้องสแกน Barcode/QR";
+        isCameraRunning = false;
+      });
+    }
+
+    function stopScanner() {
+      if (html5QrCode && isCameraRunning) {
+        html5QrCode.stop().then(() => {
+          document.getElementById('reader-container').classList.add('hidden');
+          document.getElementById('btnCameraText').textContent = "เปิดกล้องสแกน Barcode/QR";
+          isCameraRunning = false;
+        }).catch(err => console.error(err));
+      }
+    }
+
+    // ----------------------------------------------------
+    // ค้นหารหัสพัสดุ
+    // ----------------------------------------------------
+    function lookupAssetManual() {
+      const id = document.getElementById('manualAssetId').value.trim();
+      if (!id) {
+        Swal.fire('แจ้งเตือน', 'กรุณาระบุรหัสพัสดุครุภัณฑ์', 'warning');
+        return;
+      }
+      fetchAssetData(id);
+    }
+
+    async function fetchAssetData(assetId) {
+      showLoading("กำลังค้นหาข้อมูลพัสดุ...");
+      try {
+        const response = await callBackend("getAssetDetail", { assetId: assetId });
+        hideLoading();
+        if (response.success) {
+          renderAssetCard(response.data);
+        } else {
+          Swal.fire('ไม่พบข้อมูล', response.message, 'error');
+          document.getElementById('assetDetailCard').classList.add('hidden');
+        }
+      } catch (err) {
+        hideLoading();
+        Swal.fire('เกิดข้อผิดพลาด', err.toString(), 'error');
+      }
+    }
+
+    function renderAssetCard(asset) {
+      currentAsset = asset;
+
+      document.getElementById('displayAssetId').textContent = asset.assetId;
+      document.getElementById('displayAssetName').textContent = asset.assetName;
+      document.getElementById('displayPurchaseDate').textContent = asset.purchaseDate;
+      document.getElementById('displayQuantity').textContent = asset.quantity;
+      document.getElementById('displayInspector').textContent = asset.inspector;
+
+      const statusElem = document.getElementById('displayStatus');
+      const btnBorrowReturn = document.getElementById('btnBorrowReturn');
+      const textBorrowReturnBtn = document.getElementById('textBorrowReturnBtn');
+      const borrowInfoAlert = document.getElementById('borrowInfoAlert');
+
+      if (asset.status === 'Ready') {
+        statusElem.textContent = "ใช้งานปกติ";
+        statusElem.className = "text-xs font-semibold px-3 py-1 rounded-full bg-emerald-100 text-emerald-700";
+        btnBorrowReturn.disabled = false;
+        btnBorrowReturn.className = "w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-xl transition shadow-sm flex items-center justify-center gap-1.5 active:scale-95";
+        textBorrowReturnBtn.textContent = "2. เบิกยืมอุปกรณ์";
+        borrowInfoAlert.classList.add('hidden');
+      } else if (asset.status === 'Borrowed') {
+        statusElem.textContent = "ถูกยืมอยู่";
+        statusElem.className = "text-xs font-semibold px-3 py-1 rounded-full bg-amber-100 text-amber-800";
+        btnBorrowReturn.disabled = false;
+        btnBorrowReturn.className = "w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition shadow-sm flex items-center justify-center gap-1.5 active:scale-95";
+        textBorrowReturnBtn.textContent = "2. ส่งคืนอุปกรณ์";
+
+        if (asset.activeBorrowInfo) {
+          document.getElementById('infoBorrowerName').textContent = asset.activeBorrowInfo.borrowerName;
+          document.getElementById('infoBorrowDept').textContent = asset.activeBorrowInfo.department;
+          document.getElementById('infoExpectedReturn').textContent = asset.activeBorrowInfo.expectedReturn;
+          borrowInfoAlert.classList.remove('hidden');
+        }
+      } else if (asset.status === 'Maintenance') {
+        statusElem.textContent = "ส่งซ่อม";
+        statusElem.className = "text-xs font-semibold px-3 py-1 rounded-full bg-red-100 text-red-700";
+        btnBorrowReturn.disabled = true;
+        btnBorrowReturn.className = "w-full py-2.5 bg-zinc-200 text-zinc-400 text-xs font-semibold rounded-xl cursor-not-allowed flex items-center justify-center gap-1.5";
+        textBorrowReturnBtn.textContent = "2. อยู่ระหว่างส่งซ่อม";
+        borrowInfoAlert.classList.add('hidden');
+      } else {
+        statusElem.textContent = "ชำรุด";
+        statusElem.className = "text-xs font-semibold px-3 py-1 rounded-full bg-zinc-200 text-zinc-700";
+        btnBorrowReturn.disabled = true;
+        btnBorrowReturn.className = "w-full py-2.5 bg-zinc-200 text-zinc-400 text-xs font-semibold rounded-xl cursor-not-allowed flex items-center justify-center gap-1.5";
+        textBorrowReturnBtn.textContent = "2. อุปกรณ์ชำรุด";
+        borrowInfoAlert.classList.add('hidden');
+      }
+
+      document.getElementById('assetDetailCard').classList.remove('hidden');
+    }
+
+    // ----------------------------------------------------
+    // จัดการ Modals
+    // ----------------------------------------------------
+    function openModal(modalId) {
+      document.getElementById(modalId).classList.remove('hidden');
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).classList.add('hidden');
+    }
+
+    function openPMModal() {
+      if (!currentAsset) return;
+      document.getElementById('pmInspector').value = '';
+      document.getElementById('pmRemark').value = '';
+      openModal('modalPM');
+    }
+
+    async function submitPMRecord() {
+      const inspector = document.getElementById('pmInspector').value.trim();
+      if (!inspector) {
+        Swal.fire('ข้อมูลไม่ครบ', 'กรุณาระบุชื่อผู้ตรวจเช็ก', 'warning');
+        return;
+      }
+
+      const payload = {
+        assetId: currentAsset.assetId,
+        inspectorName: inspector,
+        physicalCheck: document.querySelector('input[name="pmPhysical"]:checked').value,
+        functionCheck: document.querySelector('input[name="pmFunction"]:checked').value,
+        remarkNotes: document.getElementById('pmRemark').value.trim()
+      };
+
+      showLoading("กำลังบันทึกข้อมูล PM...");
+      try {
+        const res = await callBackend("savePMRecord", { formData: payload });
+        hideLoading();
+        closeModal('modalPM');
+        if (res.success) {
+          Swal.fire('สำเร็จ', res.message, 'success');
+          fetchAssetData(currentAsset.assetId);
+        } else {
+          Swal.fire('ไม่สำเร็จ', res.message, 'error');
+        }
+      } catch (err) {
+        hideLoading();
+        Swal.fire('ข้อผิดพลาด', err.toString(), 'error');
+      }
+    }
+
+    function openBorrowReturnModal() {
+      if (!currentAsset) return;
+
+      if (currentAsset.status === 'Ready') {
+        document.getElementById('borrowerName').value = '';
+        document.getElementById('borrowerDept').value = '';
+        document.getElementById('borrowPurpose').value = '';
+        document.getElementById('expectedReturnDate').value = new Date().toISOString().split('T')[0];
+        openModal('modalBorrow');
+      } else if (currentAsset.status === 'Borrowed') {
+        document.getElementById('returnAssetLabel').textContent = currentAsset.assetId + " - " + currentAsset.assetName;
+        document.getElementById('staffReceiver').value = '';
+        openModal('modalReturn');
+      }
+    }
+
+    async function submitBorrow() {
+      const borrower = document.getElementById('borrowerName').value.trim();
+      const dept = document.getElementById('borrowerDept').value.trim();
+      const expected = document.getElementById('expectedReturnDate').value;
+
+      if (!borrower || !dept || !expected) {
+        Swal.fire('ข้อมูลไม่ครบ', 'กรุณาระบุชื่อผู้ยืม แผนก และกำหนดคืน', 'warning');
+        return;
+      }
+
+      const payload = {
+        assetId: currentAsset.assetId,
+        action: "BORROW",
+        borrowerName: borrower,
+        department: dept,
+        purposeLocation: document.getElementById('borrowPurpose').value.trim(),
+        expectedReturn: expected
+      };
+
+      showLoading("กำลังบันทึกการเบิกยืม...");
+      try {
+        const res = await callBackend("processBorrowReturn", { formData: payload });
+        hideLoading();
+        closeModal('modalBorrow');
+        if (res.success) {
+          Swal.fire('สำเร็จ', res.message, 'success');
+          fetchAssetData(currentAsset.assetId);
+        } else {
+          Swal.fire('ไม่สำเร็จ', res.message, 'error');
+        }
+      } catch (err) {
+        hideLoading();
+        Swal.fire('ข้อผิดพลาด', err.toString(), 'error');
+      }
+    }
+
+    async function submitReturn() {
+      const receiver = document.getElementById('staffReceiver').value.trim();
+      if (!receiver) {
+        Swal.fire('ข้อมูลไม่ครบ', 'กรุณาระบุชื่อเจ้าหน้าที่ผู้รับคืน', 'warning');
+        return;
+      }
+
+      const payload = {
+        assetId: currentAsset.assetId,
+        action: "RETURN",
+        staffReceiver: receiver
+      };
+
+      showLoading("กำลังบันทึกการรับคืน...");
+      try {
+        const res = await callBackend("processBorrowReturn", { formData: payload });
+        hideLoading();
+        closeModal('modalReturn');
+        if (res.success) {
+          Swal.fire('สำเร็จ', res.message, 'success');
+          fetchAssetData(currentAsset.assetId);
+        } else {
+          Swal.fire('ไม่สำเร็จ', res.message, 'error');
+        }
+      } catch (err) {
+        hideLoading();
+        Swal.fire('ข้อผิดพลาด', err.toString(), 'error');
+      }
+    }
+
+    function openRepairModal() {
+      if (!currentAsset) return;
+      document.getElementById('repairDescription').value = '';
+      openModal('modalRepair');
+    }
+
+    async function submitRepair() {
+      const issue = document.getElementById('repairDescription').value.trim();
+      if (!issue) {
+        Swal.fire('ข้อมูลไม่ครบ', 'กรุณาระบุอาการชำรุด', 'warning');
+        return;
+      }
+
+      const payload = {
+        assetId: currentAsset.assetId,
+        issueDescription: issue
+      };
+
+      showLoading("กำลังส่งข้อมูลแจ้งซ่อม...");
+      try {
+        const res = await callBackend("reportIncident", { formData: payload });
+        hideLoading();
+        closeModal('modalRepair');
+        if (res.success) {
+          Swal.fire('แจ้งซ่อมสำเร็จ', res.message, 'success');
+          fetchAssetData(currentAsset.assetId);
+        } else {
+          Swal.fire('ไม่สำเร็จ', res.message, 'error');
+        }
+      } catch (err) {
+        hideLoading();
+        Swal.fire('ข้อผิดพลาด', err.toString(), 'error');
+      }
+    }
+
+    function showLoading(msg) {
+      document.getElementById('loadingText').textContent = msg || 'กำลังประมวลผล...';
+      document.getElementById('loadingOverlay').classList.remove('hidden');
+    }
+    function hideLoading() {
+      document.getElementById('loadingOverlay').classList.add('hidden');
+    }
+  </script>
+</body>
+</html>
